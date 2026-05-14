@@ -14,11 +14,12 @@ ALLOW_PREFIXES = re.compile(r'\b(sfw|socket\s+(npm|npx))\s')
 
 INSTALL_PATTERNS = [
     r'\bnpm\s+(install|i|add|ci)\b',
-    r'\bnpx\s+\S',
+    r'\bnpx\s+(-\S+\s+)*[\w@]',
     r'\bpnpm\s+(add|install|i|dlx)\b',
     r'\byarn\s+(add|install)\b',
     r'(^|[;&|]\s*)yarn\s*($|[;&|])',
     r'\buv\s+(add|sync|run|pip\s+install|tool\s+install)\b',
+    r'\buvx\s+(-\S+\s+)*[\w@]',
     r'\bpip\s+install\b',
     r'\bpipx\s+install\b',
     r'\bcargo\s+(install|add)\b',

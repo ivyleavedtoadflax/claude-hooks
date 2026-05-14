@@ -15,6 +15,7 @@ A `PreToolUse` hook that rejects `Bash` tool calls running a package-manager ins
 | pnpm | `add`, `install`, `i`, `dlx` |
 | yarn | `add`, `install`, and bare `yarn` |
 | uv | `add`, `sync`, `run`, `pip install`, `tool install` |
+| uvx | any invocation |
 | pip | `install` |
 | pipx | `install` |
 | cargo | `install`, `add` |
@@ -69,3 +70,11 @@ echo '{"tool_name":"Bash","tool_input":{"command":"sfw npm install foo"}}' \
   | ~/.claude/hooks/sfw-enforce.py; echo "exit: $?"
 # exit: 0  (allowed)
 ```
+
+## Defence in depth
+
+The hook only sees Bash commands that Claude routes through its declared tool interface. It is blind to install scripts, `curl | bash`, and Claude Code's own internal subprocesses (e.g. MCP server updates that spawn `uvx` directly).
+
+[`wrappers/`](wrappers/) adds a PATH-precedence layer that intercepts package-manager invocations regardless of who spawns them. See [`wrappers/README.md`](wrappers/README.md).
+
+[`INTEROP.md`](INTEROP.md) covers composing this hook with other `PreToolUse` Bash hooks (rtk, etc.) and lists the remaining blind spots.

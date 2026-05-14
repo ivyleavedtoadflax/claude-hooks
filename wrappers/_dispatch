@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+# Routes a package-manager invocation through Socket Firewall (sfw).
+#
+# Installed as symlinks named after the wrapped tools (npm, npx, pnpm, yarn,
+# uv, uvx, pip, pipx, cargo). Each symlink points at this script; the script
+# walks $PATH to find the *next* binary with the same name and re-execs it
+# under `sfw`, so registry traffic is intercepted regardless of who invoked
+# the command (interactive shell, install script, cron, Claude Code's own
+# subprocesses, etc.).
+
+set -e
+
+self_real="$(readlink -f "$0")"
+self_dir="$(dirname "$self_real")"
+self_name="${0##*/}"
+
+# Find the real binary in PATH, skipping any entry that resolves to us.
+real=""
+IFS=: read -ra path_dirs <<< "$PATH"
+for d in "${path_dirs[@]}"; do
+    candidate="$d/$self_name"
+    [ -x "$candidate" ] || continue
+    [ "$(readlink -f "$candidate")" = "$self_real" ] && continue
+    real="$candidate"
+    break
+done
+
+if [ -z "$real" ]; then
+    echo "sfw-wrap: no real '$self_name' found in PATH outside $self_dir" >&2
+    exit 127
+fi
+
+# If sfw is missing, fall through to the real binary with a warning rather
+# than blocking work. Tighten this to a hard fail if you'd prefer.
+if ! command -v sfw >/dev/null 2>&1; then
+    echo "sfw-wrap: sfw not found in PATH; running $self_name unwrapped" >&2
+    exec "$real" "$@"
+fi
+
+exec sfw "$real" "$@"

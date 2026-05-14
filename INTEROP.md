@@ -35,7 +35,7 @@ Either order works, but sfw-first short-circuits earlier on blocked installs —
 
 Things neither hook will catch:
 
-1. **Indirect installs** — `bash setup.sh`, `curl https://… | bash`, `make install`, `docker run`. sfw only sees the literal command Claude Code passes; an install nested inside a script or container is invisible. Defence-in-depth (sandboxed installers, lockfile review) still matters.
+1. **Indirect installs** — `bash setup.sh`, `curl https://… | bash`, `make install`, `docker run`. sfw only sees the literal command Claude Code passes; an install nested inside a script or container is invisible to the hook. The [`wrappers/`](wrappers/) PATH layer catches the subset of these that resolve `npm`/`pip`/`uv`/etc. via `$PATH` (most install scripts), but full-path invocations and containerised installers still bypass.
 2. **Literal-text false positives** — `echo "remember to npm install …"` is text-level matched and blocked. Annoying when discussing/documenting, never dangerous.
 3. **`uv sync` / `uv run` friction** — these hit the registry, so they're blocked unless wrapped. Every routine `uv sync` needs the `sfw` prefix.
 4. **Fail-open silent bypass** — both hooks return 0 on internal errors (missing `python3`, `jq`, or the `rtk` / `sfw` binary). Right call for availability; means a broken hook silently lets installs through. Periodically sanity-check with:
