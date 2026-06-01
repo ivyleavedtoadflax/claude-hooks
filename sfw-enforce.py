@@ -18,7 +18,7 @@ INSTALL_PATTERNS = [
     r'\bpnpm\s+(add|install|i|dlx)\b',
     r'\byarn\s+(add|install)\b',
     r'(^|[;&|]\s*)yarn\s*($|[;&|])',
-    r'\buv\s+(add|sync|run|pip\s+install|tool\s+install)\b',
+    r'\buv\s+(add|sync|pip\s+install|tool\s+install)\b',
     r'\buvx\s+(-\S+\s+)*[\w@]',
     r'\bpip\s+install\b',
     r'\bpipx\s+install\b',
