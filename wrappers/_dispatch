@@ -10,6 +10,33 @@
 
 set -e
 
+# ── Re-entry: we are now running *inside* sfw's environment ────────────
+# sfw sets SSL_CERT_FILE to a bundle holding only its own CA. That suffices
+# for registry hosts, which it intercepts and re-signs — but it *tunnels*
+# every other host, passing through the origin's real certificate. A child
+# left with no system roots cannot verify those, so anything reaching a
+# non-registry HTTPS host dies with "x509: certificate signed by unknown
+# authority". `uvx sbx update` hit exactly this: gh could not reach
+# api.github.com. Merge the system roots back in, then run the real command.
+if [ "${1:-}" = "--merge-ca-then-exec" ]; then
+    shift
+    for sys in /etc/ssl/certs/ca-certificates.crt /etc/pki/tls/certs/ca-bundle.crt; do
+        [ -r "$sys" ] && [ -r "${SSL_CERT_FILE:-}" ] || continue
+        merged="$(dirname "$SSL_CERT_FILE")/sfw-plus-system-ca.crt"
+        cat "$SSL_CERT_FILE" "$sys" > "$merged" || break
+        # NIX_SSL_CERT_FILE is in the list because nixpkgs' OpenSSL prefers it
+        # over SSL_CERT_FILE: leave it on the system bundle and nix-built tools
+        # fail the other way round, on the registry hosts sfw *does* re-sign.
+        export SSL_CERT_FILE="$merged" NIX_SSL_CERT_FILE="$merged" \
+               NODE_EXTRA_CA_CERTS="$merged" REQUESTS_CA_BUNDLE="$merged" \
+               PIP_CERT="$merged" CARGO_HTTP_CAINFO="$merged" \
+               GIT_SSL_CAINFO="$merged" GIT_PROXY_SSL_CAINFO="$merged" \
+               YARN_HTTPS_CA_FILE_PATH="$merged" CURL_CA_BUNDLE="$merged"
+        break
+    done
+    exec "$@"
+fi
+
 self_real="$(readlink -f "$0")"
 self_dir="$(dirname "$self_real")"
 self_name="${0##*/}"
@@ -30,6 +57,36 @@ if [ -z "$real" ]; then
     exit 127
 fi
 
+# Only registry-touching subcommands need sfw. Execute-style subcommands run
+# already-installed code (uv run, npm run/test, ...) and must NOT be wrapped —
+# otherwise sfw proxies the program's *own* network traffic and breaks it
+# (e.g. a script fetching external URLs fails with spurious DNS errors).
+# Find the first positional arg (skipping leading -flags) and pass it through
+# unwrapped if it's an execute command. Default is to wrap (safe for installs).
+subcmd=""
+for a in "$@"; do
+    case "$a" in
+        -*) continue ;;
+        *)  subcmd="$a"; break ;;
+    esac
+done
+case "$self_name" in
+    uv)   passthrough="run venv init python cache tree version self help format" ;;
+    npm)  passthrough="run run-script start test stop restart" ;;
+    pnpm) passthrough="run start test" ;;
+    yarn) passthrough="run start test" ;;
+    pip)  passthrough="list show freeze check uninstall" ;;
+    pipx) passthrough="list uninstall" ;;
+    # uvx/npx get no passthrough: they fetch *and* execute in one process, so
+    # neither wrapping nor exempting is right on its own. Wrapping them is safe
+    # now that the CA merge above keeps the executed program's HTTPS working.
+    # cargo build/run stays wrapped because cargo needs the registry to build.
+    *)    passthrough="" ;;
+esac
+for p in $passthrough; do
+    [ "$subcmd" = "$p" ] && exec "$real" "$@"
+done
+
 # If sfw is missing, fall through to the real binary with a warning rather
 # than blocking work. Tighten this to a hard fail if you'd prefer.
 if ! command -v sfw >/dev/null 2>&1; then
@@ -37,4 +94,4 @@ if ! command -v sfw >/dev/null 2>&1; then
     exec "$real" "$@"
 fi
 
-exec sfw "$real" "$@"
+exec sfw "$self_real" --merge-ca-then-exec "$real" "$@"

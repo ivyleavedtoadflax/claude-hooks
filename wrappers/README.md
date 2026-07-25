@@ -55,6 +55,29 @@ which -a npm           # wrapper listed first, real npm second
 npm --version          # should show sfw banner
 ```
 
+## CA bundle merge
+
+sfw sets `SSL_CERT_FILE` to a bundle containing **only its own CA**. That is
+enough for the registry hosts it intercepts and re-signs, but it *tunnels*
+every other host, passing the origin's real certificate straight through — and
+a child with no system roots left cannot verify those. Anything reaching a
+non-registry HTTPS host dies with `x509: certificate signed by unknown
+authority`.
+
+This bit for real: `uvx sbx update` failed because `gh` could not reach
+`api.github.com`. `uvx`/`npx` make it unavoidable — they fetch *and* execute
+in one process, so the executed program inherits the proxy no matter what.
+
+So the wrapper re-execs itself under sfw with a `--merge-ca-then-exec`
+sentinel. Inside sfw's environment it concatenates sfw's CA with the system
+bundle, points every tool's CA variable at the result, and only then runs the
+real command. Both kinds of host verify: intercepted ones against sfw's CA,
+tunnelled ones against the system roots.
+
+`NIX_SSL_CERT_FILE` is set too — nixpkgs' OpenSSL prefers it over
+`SSL_CERT_FILE`, so leaving it alone breaks nix-built tools on exactly the
+registry hosts sfw does re-sign.
+
 ## Fail-open behaviour
 
 The dispatch script falls through to the real binary with a warning if `sfw` is missing on the system, so a broken sfw install doesn't break every install command on the box. Flip that to a hard fail by replacing the `command -v sfw` branch with `exit 1` in `_dispatch`.
